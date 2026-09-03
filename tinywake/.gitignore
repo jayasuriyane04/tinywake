@@ -1,0 +1,37 @@
+# Datasets (audio is large and personal — don't commit it)
+dataset/hey_nova/*.wav
+dataset/unknown/*.wav
+dataset/noise/*.wav
+dataset/hard_negatives/*.wav
+dataset/manifest.json
+
+# Trained models / checkpoints (regenerate via training/ scripts)
+models/*.keras
+models/*.tflite
+models/*.h5
+models/training_metrics.json
+models/evaluation_report.json
+models/model_data.cc
+models/model_data.h
+
+# Benchmark output
+benchmarks/results/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/

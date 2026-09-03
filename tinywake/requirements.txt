@@ -1,0 +1,18 @@
+# Core
+numpy>=1.24,<2.0
+tensorflow>=2.15,<2.17          # training + TFLite conversion/inference
+sounddevice>=0.4.6              # microphone I/O (collect_audio, edge_simulator, live_test)
+
+# Networking (edge simulator side)
+websockets>=12.0
+
+# Server (also listed in server/requirements.txt for standalone deployment)
+fastapi>=0.110
+uvicorn[standard]>=0.29
+faster-whisper>=1.0.0
+
+# Benchmarks / dashboard support
+matplotlib>=3.8                 # confusion matrix image in accuracy_test.py
+
+# Dev
+pytest>=8.0

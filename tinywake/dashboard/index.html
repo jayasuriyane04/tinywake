@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>tinywake — Edge KWS Monitor</title>
+<style>
+  :root {
+    --bg: #0a0e14;
+    --panel: #10161f;
+    --border: #1e2733;
+    --green: #33d17a;
+    --amber: #f5c542;
+    --red: #ef4444;
+    --blue: #4da3ff;
+    --text: #d6e0ea;
+    --dim: #6b7c8f;
+    --mono: "SF Mono", "Consolas", "Menlo", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    margin: 0;
+    padding: 20px;
+  }
+  h1 {
+    font-size: 15px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin: 0 0 16px 0;
+  }
+  h1 span { color: var(--blue); }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+  }
+  .label {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 8px;
+  }
+  .value { font-size: 22px; font-weight: 600; }
+  .state-LISTENING { color: var(--blue); }
+  .state-POSSIBLE_WAKE, .state-CONFIRMED_WAKE { color: var(--amber); }
+  .state-STREAMING { color: var(--green); }
+  .state-COOLDOWN { color: var(--dim); }
+  .bar-bg { background: #1a2330; border-radius: 3px; height: 8px; margin-top: 8px; overflow: hidden; }
+  .bar-fill { background: var(--green); height: 100%; transition: width 0.15s ease; }
+  #transcript {
+    grid-column: 1 / -1;
+    min-height: 90px;
+    font-size: 16px;
+    color: var(--green);
+  }
+  #transcript .placeholder { color: var(--dim); font-size: 13px; }
+  #log {
+    grid-column: 1 / -1;
+    background: #060a10;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    height: 220px;
+    overflow-y: auto;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .log-line { white-space: pre-wrap; }
+  .tag-WAKE { color: var(--amber); }
+  .tag-STREAM { color: var(--green); }
+  .tag-ASR { color: var(--blue); }
+  .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+  }
+  .dot-connected { background: var(--green); }
+  .dot-disconnected { background: var(--red); }
+</style>
+</head>
+<body>
+  <h1>tinywake <span>// edge-ai monitor</span> &nbsp;<span id="conn-dot" class="dot dot-disconnected"></span><span id="conn-text" style="color:var(--dim); font-size:11px;">disconnected</span></h1>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="label">System State</div>
+      <div class="value" id="state">LISTENING</div>
+    </div>
+    <div class="panel">
+      <div class="label">Wake Confidence</div>
+      <div class="value" id="confidence">0.00</div>
+      <div class="bar-bg"><div class="bar-fill" id="confidence-bar" style="width:0%"></div></div>
+    </div>
+    <div class="panel">
+      <div class="label">Wake Detections</div>
+      <div class="value" id="wake-count">0</div>
+    </div>
+    <div class="panel">
+      <div class="label">False Activations</div>
+      <div class="value" id="false-activations">0</div>
+    </div>
+    <div class="panel">
+      <div class="label">Total Latency (last)</div>
+      <div class="value" id="latency">— ms</div>
+    </div>
+    <div class="panel">
+      <div class="label">Packets Transmitted</div>
+      <div class="value" id="packets">0</div>
+    </div>
+    <div class="panel">
+      <div class="label">Bandwidth (last utterance)</div>
+      <div class="value" id="bandwidth">— KB</div>
+    </div>
+    <div class="panel">
+      <div class="label">Model Info</div>
+      <div class="value" style="font-size:13px;" id="model-info">kws_int8.tflite</div>
+    </div>
+
+    <div class="panel" id="transcript">
+      <div class="label">Live Transcription</div>
+      <div id="transcript-text" class="placeholder">waiting for a wake event...</div>
+    </div>
+
+    <div class="panel" id="log">
+      <div class="label">Event Log</div>
+      <div id="log-lines"></div>
+    </div>
+  </div>
+
+<script>
+  const WS_URL = "ws://localhost:8000/dashboard";
+  let wakeCount = 0;
+  let falseActivations = 0;
+
+  const els = {
+    state: document.getElementById("state"),
+    confidence: document.getElementById("confidence"),
+    confidenceBar: document.getElementById("confidence-bar"),
+    wakeCount: document.getElementById("wake-count"),
+    falseActivations: document.getElementById("false-activations"),
+    latency: document.getElementById("latency"),
+    packets: document.getElementById("packets"),
+    bandwidth: document.getElementById("bandwidth"),
+    transcriptText: document.getElementById("transcript-text"),
+    logLines: document.getElementById("log-lines"),
+    connDot: document.getElementById("conn-dot"),
+    connText: document.getElementById("conn-text"),
+  };
+
+  function addLog(tag, text) {
+    const line = document.createElement("div");
+    line.className = "log-line";
+    line.innerHTML = `<span class="tag-${tag}">[${tag}]</span> ${text}`;
+    els.logLines.appendChild(line);
+    document.getElementById("log").scrollTop = document.getElementById("log").scrollHeight;
+  }
+
+  function setState(state) {
+    els.state.textContent = state;
+    els.state.className = "value state-" + state;
+  }
+
+  function connect() {
+    const ws = new WebSocket(WS_URL);
+
+    ws.onopen = () => {
+      els.connDot.className = "dot dot-connected";
+      els.connText.textContent = "connected";
+      addLog("SERVER", "dashboard connected to " + WS_URL);
+    };
+
+    ws.onclose = () => {
+      els.connDot.className = "dot dot-disconnected";
+      els.connText.textContent = "disconnected — retrying in 2s";
+      setTimeout(connect, 2000);
+    };
+
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+
+      if (msg.type === "wake_detected") {
+        wakeCount++;
+        els.wakeCount.textContent = wakeCount;
+        setState("STREAMING");
+        addLog("WAKE", `Hey Nova detected (session=${msg.session_id})`);
+        els.transcriptText.className = "";
+        els.transcriptText.textContent = "listening for command...";
+      }
+
+      if (msg.type === "transcription") {
+        els.transcriptText.className = "";
+        els.transcriptText.textContent = msg.text || "(empty)";
+        addLog("ASR", msg.text || "(empty)");
+
+        if (msg.latencies_ms && msg.latencies_ms.total_server_latency_ms) {
+          els.latency.textContent = msg.latencies_ms.total_server_latency_ms.toFixed(0) + " ms";
+        }
+        if (msg.packets_received) els.packets.textContent = msg.packets_received;
+        if (msg.bytes_received) els.bandwidth.textContent = (msg.bytes_received / 1024).toFixed(1) + " KB";
+
+        setState("LISTENING");
+      }
+
+      if (msg.type === "client_connected") {
+        addLog("SERVER", `edge client connected: ${msg.client_id}`);
+      }
+      if (msg.type === "client_disconnected") {
+        addLog("SERVER", `edge client disconnected: ${msg.client_id}`);
+        setState("LISTENING");
+      }
+    };
+  }
+
+  connect();
+</script>
+</body>
+</html>

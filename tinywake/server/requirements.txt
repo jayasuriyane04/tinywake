@@ -1,0 +1,7 @@
+# Minimal dependencies to run only server/server.py on a separate machine
+# (e.g. a GPU box or a beefier host than the laptop running edge_simulator).
+numpy>=1.24,<2.0
+fastapi>=0.110
+uvicorn[standard]>=0.29
+faster-whisper>=1.0.0
+websockets>=12.0
